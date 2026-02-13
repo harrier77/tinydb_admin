@@ -1,0 +1,369 @@
+{% extends 'base.html' %}
+
+{% block panels %}
+<!-- DEBUG START -->
+<!-- is_array_item: {{ is_array_item }} -->
+<!-- nested_levels length: {{ nested_levels|length }} -->
+<!-- current_table: {{ current_table }} -->
+<!-- current_doc_id: {{ current_doc_id }} -->
+<!-- item_index: {{ item_index }} -->
+<!-- item_parent_name: {{ item_parent_name }} -->
+<!-- DEBUG END -->
+
+    <!-- Pannello 1: Lista Documenti della Collezione -->
+    {% if current_table %}
+    <div class="panel" {% if is_array_item %}style="opacity: 0.6; min-width: 260px; width: 260px;"{% endif %}>
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">{{ current_table }}</div>
+                <div class="panel-subtitle">{{ documents|length }} documenti</div>
+            </div>
+        </div>
+        <div class="panel-body">
+            {% if documents and documents|length > 0 %}
+                <ul class="doc-list">
+                    {% for doc in documents %}
+                    <li class="doc-item {% if current_doc_id == doc.doc_id %}active{% endif %}">
+                        <a href="/browse/{{ current_table }}/doc/{{ doc.doc_id }}" class="doc-link">
+                            <div class="doc-header-inline">
+                                {% if doc.personaggi is defined %}
+                                    <span class="doc-icon">📂</span>
+                                    <span class="doc-id-inline">{{ doc.doc_id }}</span>
+                                {% else %}
+                                    <span class="doc-icon">📄</span>
+                                    <span class="doc-id-inline">{{ doc.doc_id }}</span>
+                                {% endif %}
+                                <span class="doc-title-inline">{{ doc.nome if doc.nome else 'Documento senza nome' }}</span>
+                            </div>
+                            <div class="doc-preview">{{ doc|tojson|truncate(100) }}</div>
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">📄</div>
+                    <h3>Nessun documento</h3>
+                    <p>Debug: table={{ current_table }}, docs={{ documents|length }}</p>
+                </div>
+            {% endif %}
+            
+            <div class="field-group json-collapsible" style="margin-top: 24px;">
+                <div class="field-label json-toggle" onclick="toggleJSON(this)">
+                    <span class="json-toggle-icon">▶</span>
+                    Contenuto JSON (tutti i documenti)
+                </div>
+                <div class="field-value json-content" style="display: none;">
+                    <pre class="json-viewer">{{ documents|tojson_pretty }}</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Pannello 2: Dettaglio Documento -->
+    {% if current_doc %}
+    <div class="panel" {% if is_array_item %}style="opacity: 0.7; min-width: 280px; width: 280px;"{% endif %}>
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">{{ current_doc.nome if current_doc.nome else 'Documento' }}</div>
+                <div class="panel-subtitle">ID: {{ current_doc_id }}</div>
+            </div>
+            <div class="panel-actions">
+                <button class="panel-btn" onclick="copyToClipboard()">📋 Copia</button>
+            </div>
+        </div>
+        <div class="panel-body">
+            <div class="doc-detail">
+                <div class="doc-detail-id">{{ current_doc_id }} {{ current_doc.nome if current_doc.nome else '' }}</div>
+                
+                <!-- Lista campi cliccabili del documento -->
+                <div class="subcollections">
+                    <div class="field-label">Campi ({{ current_doc|length }})</div>
+                    <ul class="doc-list field-list" style="margin-bottom: 20px;">
+                        {% for field_name, field_value in current_doc.items() %}
+                        <li class="doc-item">
+                            {% if field_value is mapping %}
+                                <!-- Campo è un oggetto/dizionario -->
+                                <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}/field/{{ field_name }}" class="doc-link">
+                                    <div class="doc-header-inline">
+                                        <span class="doc-icon">📂</span>
+                                        <span class="doc-title-inline">{{ field_name }}</span>
+                                    </div>
+                                    <div class="doc-preview">Oggetto con {{ field_value|length }} campi</div>
+                                </a>
+                            {% elif field_value is iterable and field_value is not string %}
+                                <!-- Campo è un array -->
+                                <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}/field/{{ field_name }}" class="doc-link">
+                                    <div class="doc-header-inline">
+                                        <span class="doc-icon">📋</span>
+                                        <span class="doc-title-inline">{{ field_name }}</span>
+                                    </div>
+                                    <div class="doc-preview">Array [{{ field_value|length }} items]</div>
+                                </a>
+                            {% else %}
+                                <!-- Campo è un valore semplice -->
+                                <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}/field/{{ field_name }}" class="doc-link">
+                                    <div class="doc-header-inline">
+                                        <span class="doc-icon">📄</span>
+                                        <span class="doc-title-inline">{{ field_name }}</span>
+                                    </div>
+                                    <div class="doc-preview">{{ field_value|tojson|truncate(50) }}</div>
+                                </a>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                
+                <div class="field-group json-collapsible">
+                    <div class="field-label json-toggle" onclick="toggleJSON(this)">
+                        <span class="json-toggle-icon">▶</span>
+                        Contenuto JSON
+                    </div>
+                    <div class="field-value json-content" style="display: none;">
+                        <pre class="json-viewer">{{ current_doc|tojson_pretty }}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Pannello Lista Array (quando navighiamo su un item) -->
+    {% if is_array_item and current_array %}
+    <div class="panel" style="min-width: 320px; width: 320px;">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">{{ current_array_name }}</div>
+                <div class="panel-subtitle">{{ current_array|length }} elementi</div>
+            </div>
+        </div>
+        <div class="panel-body">
+            <ul class="doc-list">
+                {% for array_item in current_array %}
+                <li class="doc-item {% if loop.index0 == item_index %}active{% endif %}">
+                    <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}/{{ current_array_name }}/{{ loop.index0 }}" class="doc-link">
+                        <div class="doc-header-inline">
+                            <span class="doc-icon">📄</span>
+                            <span class="doc-id-inline">#{{ loop.index0 }}</span>
+                            <span class="doc-title-inline">{{ array_item.nome if array_item.nome else 'Elemento ' + loop.index0|string }}</span>
+                        </div>
+                        <div class="doc-preview">{{ array_item|tojson|truncate(60) }}</div>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+            
+            <div class="field-group json-collapsible" style="margin-top: 24px;">
+                <div class="field-label json-toggle" onclick="toggleJSON(this)">
+                    <span class="json-toggle-icon">▶</span>
+                    Contenuto JSON (tutti gli elementi)
+                </div>
+                <div class="field-value json-content" style="display: none;">
+                    <pre class="json-viewer">{{ current_array|tojson_pretty }}</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Pannello 3+: Dettaglio elemento e navigazione campi -->
+    {% for level in nested_levels %}
+    {% if not is_array_item or loop.first %}
+    <div class="panel" {% if is_array_item and loop.first %}style="flex: 1; min-width: 600px;"{% endif %}>
+        {% if level.type == 'array_document' %}
+            <!-- Pannello Documento da array con lista campi cliccabili -->
+            {% if is_array_item %}
+            <!-- Header unico per array item - mostra solo il necessario -->
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px 20px;">
+                <div style="font-size: 18px; font-weight: 600;">
+                    {{ level.document.nome if level.document.nome else 'Elemento #' + level.index|string }}
+                </div>
+                <div style="font-size: 12px; opacity: 0.9; margin-top: 4px;">
+                    {{ level.array_name }} dell'attrazione <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}" style="color: white; text-decoration: underline;">{{ current_doc.nome if current_doc.nome else 'Documento #' + current_doc_id|string }}</a>
+                </div>
+            </div>
+            {% else %}
+            <div class="panel-header">
+                <div>
+                    <div class="panel-title">{{ level.document.nome if level.document.nome else 'Elemento ' + level.index|string }}</div>
+                    <div class="panel-subtitle">{{ level.array_name }} #{{ level.index }}</div>
+                </div>
+            </div>
+            {% endif %}
+            <div class="panel-body">
+                <div class="doc-detail">
+                    {% if not is_array_item %}
+                    <div class="doc-detail-id">#{{ level.index }} {{ level.document.nome if level.document.nome else '' }}</div>
+                    {% endif %}
+                    
+                    <!-- Lista campi cliccabili -->
+                    <div class="subcollections">
+                        <div class="field-label">Campi ({{ level.document|length }})</div>
+                        <ul class="doc-list field-list" style="margin-bottom: 20px;">
+                            {% for field_name, field_value in level.document.items() %}
+                            <li class="doc-item">
+                                {% if field_value is mapping %}
+                                    <!-- Campo è un oggetto/dizionario -->
+                                    <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}/{{ level.array_name }}/{{ level.index }}/{{ field_name }}" class="doc-link">
+                                        <div class="doc-header-inline">
+                                            <span class="doc-icon">📂</span>
+                                            <span class="doc-title-inline">{{ field_name }}</span>
+                                        </div>
+                                        <div class="doc-preview">Oggetto con {{ field_value|length }} campi</div>
+                                    </a>
+                                {% elif field_value is iterable and field_value is not string %}
+                                    <!-- Campo è un array -->
+                                    <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}/{{ level.array_name }}/{{ level.index }}/{{ field_name }}" class="doc-link">
+                                        <div class="doc-header-inline">
+                                            <span class="doc-icon">📋</span>
+                                            <span class="doc-title-inline">{{ field_name }}</span>
+                                        </div>
+                                        <div class="doc-preview">Array [{{ field_value|length }} items]</div>
+                                    </a>
+                                {% else %}
+                                    <!-- Campo è un valore semplice -->
+                                    <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}/{{ level.array_name }}/{{ level.index }}/{{ field_name }}" class="doc-link">
+                                        <div class="doc-header-inline">
+                                            <span class="doc-icon">📄</span>
+                                            <span class="doc-title-inline">{{ field_name }}</span>
+                                        </div>
+                                        <div class="doc-preview">{{ field_value|tojson|truncate(50) }}</div>
+                                    </a>
+                                {% endif %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    
+                    <div class="field-group json-collapsible">
+                        <div class="field-label json-toggle" onclick="toggleJSON(this)">
+                            <span class="json-toggle-icon">▶</span>
+                            Contenuto JSON
+                        </div>
+                        <div class="field-value json-content" style="display: none;">
+                            <pre class="json-viewer">{{ level.document|tojson_pretty }}</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+        {% elif level.type == 'field_value' %}
+            <!-- Pannello Valore di un campo -->
+            {% if is_array_item %}
+            <!-- Header per elemento array navigato come field -->
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px 20px;">
+                <div style="font-size: 18px; font-weight: 600;">
+                    Elemento #{{ item_index }}
+                </div>
+                <div style="font-size: 12px; opacity: 0.9; margin-top: 4px;">
+                    {{ level.field_name }} dell'attrazione <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}" style="color: white; text-decoration: underline;">{{ current_doc.nome if current_doc.nome else 'Documento #' + current_doc_id|string }}</a>
+                </div>
+            </div>
+            {% else %}
+            <div class="panel-header">
+                <div>
+                    <div class="panel-title">{{ level.field_name }}</div>
+                    <div class="panel-subtitle">{{ level.parent_name }}</div>
+                </div>
+            </div>
+            {% endif %}
+            <div class="panel-body">
+                <div class="doc-detail">
+                    {% if not is_array_item %}
+                    <div class="doc-detail-id">{{ level.field_name }}</div>
+                    {% endif %}
+                    
+                    {% if level.field_type == 'array' %}
+                        <!-- Campo è un array - mostra lista elementi -->
+                        <div class="subcollections">
+                            <div class="field-label">Elementi ({{ level.field_value|length }})</div>
+                            <ul class="doc-list" style="margin-bottom: 20px;">
+                                {% for item in level.field_value %}
+                                <li class="doc-item">
+                                    {% if item is mapping %}
+                                        <a href="{{ request.path }}/{{ loop.index0 }}" class="doc-link">
+                                            <div class="doc-header-inline">
+                                                <span class="doc-id-inline">#{{ loop.index0 }}</span>
+                                                <span class="doc-title-inline">{{ item.nome if item.nome else 'Oggetto' }}</span>
+                                            </div>
+                                            <div class="doc-preview">{{ item|tojson|truncate(60) }}</div>
+                                        </a>
+                                    {% else %}
+                                        <div class="doc-link" style="cursor: default;">
+                                            <div class="doc-header-inline">
+                                                <span class="doc-id-inline">#{{ loop.index0 }}</span>
+                                                <span class="doc-title-inline">{{ item }}</span>
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% elif level.field_type == 'object' %}
+                        <!-- Campo è un oggetto - mostra lista campi -->
+                        <div class="subcollections">
+                            <div class="field-label">Campi ({{ level.field_value|length }})</div>
+                            <ul class="doc-list" style="margin-bottom: 20px;">
+                                {% for subfield_name, subfield_value in level.field_value.items() %}
+                                <li class="doc-item">
+                                    <a href="{{ request.path }}/{{ subfield_name }}" class="doc-link">
+                                        <div class="doc-header-inline">
+                                            <span class="doc-icon">📄</span>
+                                            <span class="doc-title-inline">{{ subfield_name }}</span>
+                                        </div>
+                                        <div class="doc-preview">{{ subfield_value|tojson|truncate(50) }}</div>
+                                    </a>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% else %}
+                        <!-- Campo è un valore semplice -->
+                        <div class="field-group">
+                            <div class="field-label">Valore</div>
+                            <div class="field-value-display" style="padding: 16px; background: #f8f9fa; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
+                                {{ level.field_value|tojson_pretty }}
+                            </div>
+                        </div>
+                    {% endif %}
+                    
+                    <div class="field-group json-collapsible">
+                        <div class="field-label json-toggle" onclick="toggleJSON(this)">
+                            <span class="json-toggle-icon">▶</span>
+                            Contenuto JSON
+                        </div>
+                        <div class="field-value json-content" style="display: none;">
+                            <pre class="json-viewer">{{ level.field_value|tojson_pretty }}</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+    
+    <script>
+        function copyToClipboard() {
+            const json = {{ current_doc|tojson }};
+            navigator.clipboard.writeText(JSON.stringify(json, null, 2));
+            alert('JSON copiato negli appunti!');
+        }
+        
+        function toggleJSON(element) {
+            const content = element.nextElementSibling;
+            const icon = element.querySelector('.json-toggle-icon');
+            
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                icon.textContent = '▼';
+            } else {
+                content.style.display = 'none';
+                icon.textContent = '▶';
+            }
+        }
+    </script>
+{% endblock %}
