@@ -39,6 +39,9 @@
             padding: 20px;
             border-bottom: 1px solid #dadce0;
             background-color: #fff;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
         }
         
         .sidebar-header h1 {
@@ -47,10 +50,82 @@
             color: #5f6368;
         }
         
-        .sidebar-header .project-name {
-            font-size: 14px;
-            color: #80868b;
-            margin-top: 4px;
+        .sidebar-toggle-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            color: #5f6368;
+            padding: 4px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        
+        .sidebar-toggle-btn:hover {
+            background-color: #f1f3f4;
+            color: #1967d2;
+        }
+        
+        .sidebar.collapsed {
+            width: 60px;
+            min-width: 60px;
+        }
+        
+        .sidebar.collapsed .sidebar-header h1,
+        .sidebar.collapsed .db-selector,
+        .sidebar.collapsed .nav-section {
+            display: none;
+        }
+        
+        .sidebar.collapsed .sidebar-header {
+            justify-content: center;
+            padding: 20px 10px;
+        }
+        
+        .db-selector {
+            margin-top: 12px;
+        }
+        
+        .db-selector form {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .db-selector select {
+            padding: 8px 12px;
+            font-size: 13px;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            background-color: #fff;
+            color: #202124;
+            cursor: pointer;
+            width: 100%;
+        }
+        
+        .db-selector select:hover {
+            border-color: #1967d2;
+        }
+        
+        .db-selector select:focus {
+            outline: none;
+            border-color: #1967d2;
+            box-shadow: 0 0 0 2px rgba(25, 103, 210, 0.1);
+        }
+        
+        .db-selector button {
+            padding: 6px 12px;
+            font-size: 12px;
+            background: #1967d2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .db-selector button:hover {
+            background: #1557b0;
         }
         
         .nav-section {
@@ -431,10 +506,21 @@
 <body>
     <div class="app-container">
         <!-- Sidebar - Lista Collezioni Root -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="main-sidebar">
             <div class="sidebar-header">
-                <h1>TinyDB Admin</h1>
-                <div class="project-name">database.json</div>
+                <div>
+                    <h1>TinyDB Admin</h1>
+                        <div class="db-selector">
+                        <form action="/select-db" method="POST">
+                            <select name="database" onchange="this.form.submit()">
+                                {% for db in databases %}
+                                <option value="{{ db }}" {% if db == current_db %}selected{% endif %}>{{ db }}</option>
+                                {% endfor %}
+                            </select>
+                        </form>
+                    </div>
+                </div>
+                <button class="sidebar-toggle-btn" onclick="toggleMainSidebar()" title="Collassa/Espandi sidebar">◀</button>
             </div>
             
             <nav class="nav-section">
@@ -479,5 +565,26 @@
             </div>
         </div>
     </div>
+    
+    <script>
+        function toggleMainSidebar() {
+            const sidebar = document.getElementById('main-sidebar');
+            const btn = sidebar.querySelector('.sidebar-toggle-btn');
+            
+            if (sidebar.classList.contains('collapsed')) {
+                sidebar.classList.remove('collapsed');
+                sidebar.style.width = '280px';
+                sidebar.style.minWidth = '280px';
+                btn.innerHTML = '◀';
+                btn.title = 'Collassa sidebar';
+            } else {
+                sidebar.classList.add('collapsed');
+                sidebar.style.width = '60px';
+                sidebar.style.minWidth = '60px';
+                btn.innerHTML = '▶';
+                btn.title = 'Espandi sidebar';
+            }
+        }
+    </script>
 </body>
 </html>

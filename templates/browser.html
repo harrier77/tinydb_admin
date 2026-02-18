@@ -12,12 +12,13 @@
 
     <!-- Pannello 1: Lista Documenti della Collezione -->
     {% if current_table %}
-    <div class="panel" {% if is_array_item %}style="opacity: 0.6; min-width: 260px; width: 260px;"{% endif %}>
+    <div class="panel sidebar-panel" id="sidebar-panel" {% if is_array_item %}style="opacity: 0.6; min-width: 260px; width: 260px;"{% endif %}>
         <div class="panel-header">
             <div>
                 <div class="panel-title">{{ current_table }}</div>
                 <div class="panel-subtitle">{{ documents|length }} documenti</div>
             </div>
+            <button class="panel-btn" onclick="toggleSidebar()" title="Collassa/Espandi">◀</button>
         </div>
         <div class="panel-body">
             {% if documents and documents|length > 0 %}
@@ -33,7 +34,7 @@
                                     <span class="doc-icon">📄</span>
                                     <span class="doc-id-inline">{{ doc.doc_id }}</span>
                                 {% endif %}
-                                <span class="doc-title-inline">{{ doc.nome if doc.nome else 'Documento senza nome' }}</span>
+                                <span class="doc-title-inline">{{ doc.nome if doc.nome else doc._id }}</span>
                             </div>
                             <div class="doc-preview">{{ doc|tojson|truncate(100) }}</div>
                         </a>
@@ -62,11 +63,17 @@
     {% endif %}
 
     <!-- Pannello 2: Dettaglio Documento -->
-    {% if current_doc %}
+    {% set ns = namespace(is_duplicate=false) %}
+    {% for level in nested_levels %}
+        {% if level.type == 'array_document' and level.document._id == current_doc._id %}
+            {% set ns.is_duplicate = true %}
+        {% endif %}
+    {% endfor %}
+    {% if current_doc and not ns.is_duplicate %}
     <div class="panel" {% if is_array_item %}style="opacity: 0.7; min-width: 280px; width: 280px;"{% endif %}>
         <div class="panel-header">
             <div>
-                <div class="panel-title">{{ current_doc.nome if current_doc.nome else 'Documento' }}</div>
+                <div class="panel-title">{{ current_doc.nome if current_doc.nome else current_doc._id }}</div>
                 <div class="panel-subtitle">ID: {{ current_doc_id }}</div>
             </div>
             <div class="panel-actions">
@@ -75,7 +82,7 @@
         </div>
         <div class="panel-body">
             <div class="doc-detail">
-                <div class="doc-detail-id">{{ current_doc_id }} {{ current_doc.nome if current_doc.nome else '' }}</div>
+                <div class="doc-detail-id">{{ current_doc_id }} {{ current_doc.nome if current_doc.nome else current_doc._id }}</div>
                 
                 <!-- Lista campi cliccabili del documento -->
                 <div class="subcollections">
@@ -83,7 +90,8 @@
                     <ul class="doc-list field-list" style="margin-bottom: 20px;">
                         {% for field_name, field_value in current_doc.items() %}
                         <li class="doc-item">
-                            {% if field_value is mapping %}
+                            {% set field_type = field_types.get(field_name, 'simple') if field_types else 'simple' %}
+                            {% if field_type == 'object' %}
                                 <!-- Campo è un oggetto/dizionario -->
                                 <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}/field/{{ field_name }}" class="doc-link">
                                     <div class="doc-header-inline">
@@ -92,14 +100,14 @@
                                     </div>
                                     <div class="doc-preview">Oggetto con {{ field_value|length }} campi</div>
                                 </a>
-                            {% elif field_value is iterable and field_value is not string %}
+                            {% elif field_type == 'array' %}
                                 <!-- Campo è un array -->
                                 <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}/field/{{ field_name }}" class="doc-link">
                                     <div class="doc-header-inline">
-                                        <span class="doc-icon">📋</span>
-                                        <span class="doc-title-inline">{{ field_name }}</span>
+                                        <span class="doc-icon" style="color: #d32f2f; font-weight: bold;">📋</span>
+                                        <span class="doc-title-inline" style="font-weight: 700; color: #202124;">{{ field_name }}</span>
                                     </div>
-                                    <div class="doc-preview">Array [{{ field_value|length }} items]</div>
+                                    <div class="doc-preview" style="font-weight: 600; color: #d32f2f;">Array [{{ field_value|length }} items]</div>
                                 </a>
                             {% else %}
                                 <!-- Campo è un valore semplice -->
@@ -132,6 +140,7 @@
 
     <!-- Pannello Lista Array (quando navighiamo su un item) -->
     {% if is_array_item and current_array %}
+    {% set array_base_path = nested_levels[-1].base_path if nested_levels else current_array_name %}
     <div class="panel" style="min-width: 320px; width: 320px;">
         <div class="panel-header">
             <div>
@@ -143,11 +152,11 @@
             <ul class="doc-list">
                 {% for array_item in current_array %}
                 <li class="doc-item {% if loop.index0 == item_index %}active{% endif %}">
-                    <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}/{{ current_array_name }}/{{ loop.index0 }}" class="doc-link">
+                    <a href="/browse/{{ current_table }}/doc/{{ root_doc_id }}/{{ array_base_path }}/{{ current_array_name }}/{{ loop.index0 }}" class="doc-link">
                         <div class="doc-header-inline">
                             <span class="doc-icon">📄</span>
                             <span class="doc-id-inline">#{{ loop.index0 }}</span>
-                            <span class="doc-title-inline">{{ array_item.nome if array_item.nome else 'Elemento ' + loop.index0|string }}</span>
+                            <span class="doc-title-inline">{{ array_item.nome if array_item.nome else (array_item._id if array_item._id else 'Elemento ' + loop.index0|string) }}</span>
                         </div>
                         <div class="doc-preview">{{ array_item|tojson|truncate(60) }}</div>
                     </a>
@@ -170,7 +179,7 @@
 
     <!-- Pannello 3+: Dettaglio elemento e navigazione campi -->
     {% for level in nested_levels %}
-    {% if not is_array_item or loop.first %}
+    {% if not is_array_item or loop.last %}
     <div class="panel" {% if is_array_item and loop.first %}style="flex: 1; min-width: 600px;"{% endif %}>
         {% if level.type == 'array_document' %}
             <!-- Pannello Documento da array con lista campi cliccabili -->
@@ -178,16 +187,16 @@
             <!-- Header unico per array item - mostra solo il necessario -->
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px 20px;">
                 <div style="font-size: 18px; font-weight: 600;">
-                    {{ level.document.nome if level.document.nome else 'Elemento #' + level.index|string }}
+                    {{ level.document.nome if level.document.nome else (level.document._id if level.document._id else 'Elemento #' + level.index|string) }}
                 </div>
                 <div style="font-size: 12px; opacity: 0.9; margin-top: 4px;">
-                    {{ level.array_name }} dell'attrazione <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}" style="color: white; text-decoration: underline;">{{ current_doc.nome if current_doc.nome else 'Documento #' + current_doc_id|string }}</a>
+                    {{ level.array_name }} dell'elemento <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}" style="color: white; text-decoration: underline;">{{ current_doc.nome if current_doc.nome else current_doc._id }}</a>
                 </div>
             </div>
             {% else %}
             <div class="panel-header">
                 <div>
-                    <div class="panel-title">{{ level.document.nome if level.document.nome else 'Elemento ' + level.index|string }}</div>
+                    <div class="panel-title">{{ level.document.nome if level.document.nome else (level.document._id if level.document._id else 'Elemento ' + level.index|string) }}</div>
                     <div class="panel-subtitle">{{ level.array_name }} #{{ level.index }}</div>
                 </div>
             </div>
@@ -195,7 +204,7 @@
             <div class="panel-body">
                 <div class="doc-detail">
                     {% if not is_array_item %}
-                    <div class="doc-detail-id">#{{ level.index }} {{ level.document.nome if level.document.nome else '' }}</div>
+                    <div class="doc-detail-id">#{{ level.index }} {{ level.document.nome if level.document.nome else level.document._id }}</div>
                     {% endif %}
                     
                     <!-- Lista campi cliccabili -->
@@ -204,27 +213,29 @@
                         <ul class="doc-list field-list" style="margin-bottom: 20px;">
                             {% for field_name, field_value in level.document.items() %}
                             <li class="doc-item">
-                                {% if field_value is mapping %}
+                                {% set field_type = level.field_types.get(field_name, 'simple') if level.field_types else 'simple' %}
+                                {% set field_url_base = root_doc_id + '/' + level.base_path if level.base_path else root_doc_id + '/' + level.array_name + '/' + level.index|string %}
+                                {% if field_type == 'object' %}
                                     <!-- Campo è un oggetto/dizionario -->
-                                    <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}/{{ level.array_name }}/{{ level.index }}/{{ field_name }}" class="doc-link">
+                                    <a href="/browse/{{ current_table }}/doc/{{ field_url_base }}/{{ field_name }}" class="doc-link">
                                         <div class="doc-header-inline">
                                             <span class="doc-icon">📂</span>
                                             <span class="doc-title-inline">{{ field_name }}</span>
                                         </div>
                                         <div class="doc-preview">Oggetto con {{ field_value|length }} campi</div>
                                     </a>
-                                {% elif field_value is iterable and field_value is not string %}
+                                {% elif field_type == 'array' %}
                                     <!-- Campo è un array -->
-                                    <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}/{{ level.array_name }}/{{ level.index }}/{{ field_name }}" class="doc-link">
+                                    <a href="/browse/{{ current_table }}/doc/{{ field_url_base }}/{{ field_name }}" class="doc-link">
                                         <div class="doc-header-inline">
-                                            <span class="doc-icon">📋</span>
-                                            <span class="doc-title-inline">{{ field_name }}</span>
+                                            <span class="doc-icon" style="color: #d32f2f; font-weight: bold;">📋</span>
+                                            <span class="doc-title-inline" style="font-weight: 700; color: #202124;">{{ field_name }}</span>
                                         </div>
-                                        <div class="doc-preview">Array [{{ field_value|length }} items]</div>
+                                        <div class="doc-preview" style="font-weight: 600; color: #d32f2f;">Array [{{ field_value|length }} items]</div>
                                     </a>
                                 {% else %}
                                     <!-- Campo è un valore semplice -->
-                                    <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}/{{ level.array_name }}/{{ level.index }}/{{ field_name }}" class="doc-link">
+                                    <a href="/browse/{{ current_table }}/doc/{{ field_url_base }}/{{ field_name }}" class="doc-link">
                                         <div class="doc-header-inline">
                                             <span class="doc-icon">📄</span>
                                             <span class="doc-title-inline">{{ field_name }}</span>
@@ -258,7 +269,7 @@
                     Elemento #{{ item_index }}
                 </div>
                 <div style="font-size: 12px; opacity: 0.9; margin-top: 4px;">
-                    {{ level.field_name }} dell'attrazione <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}" style="color: white; text-decoration: underline;">{{ current_doc.nome if current_doc.nome else 'Documento #' + current_doc_id|string }}</a>
+                    {{ level.field_name }} dell'elemento <a href="/browse/{{ current_table }}/doc/{{ current_doc_id }}" style="color: white; text-decoration: underline;">{{ current_doc.nome if current_doc.nome else current_doc._id }}</a>
                 </div>
             </div>
             {% else %}
@@ -286,7 +297,7 @@
                                         <a href="{{ request.path }}/{{ loop.index0 }}" class="doc-link">
                                             <div class="doc-header-inline">
                                                 <span class="doc-id-inline">#{{ loop.index0 }}</span>
-                                                <span class="doc-title-inline">{{ item.nome if item.nome else 'Oggetto' }}</span>
+                                                <span class="doc-title-inline">{{ item.nome if item.nome else (item._id if item._id else 'Oggetto') }}</span>
                                             </div>
                                             <div class="doc-preview">{{ item|tojson|truncate(60) }}</div>
                                         </a>
@@ -346,6 +357,25 @@
     {% endif %}
     {% endfor %}
     
+    <style>
+        .sidebar-panel {
+            transition: all 0.3s ease;
+        }
+        .sidebar-panel.collapsed .panel-body {
+            display: none;
+        }
+        .sidebar-panel.collapsed .panel-title {
+            display: none;
+        }
+        .sidebar-panel.collapsed .panel-subtitle {
+            display: none;
+        }
+        .sidebar-panel.collapsed .panel-header {
+            justify-content: center;
+            padding: 16px 10px;
+        }
+    </style>
+
     <script>
         function copyToClipboard() {
             const json = {{ current_doc|tojson }};
@@ -365,5 +395,91 @@
                 icon.textContent = '▶';
             }
         }
+        
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar-panel');
+            const btn = sidebar.querySelector('.panel-header button');
+            
+            if (sidebar.classList.contains('collapsed')) {
+                sidebar.classList.remove('collapsed');
+                sidebar.style.width = '400px';
+                sidebar.style.minWidth = '400px';
+                btn.innerHTML = '◀';
+                btn.title = 'Collassa';
+            } else {
+                sidebar.classList.add('collapsed');
+                sidebar.style.width = '60px';
+                sidebar.style.minWidth = '60px';
+                btn.innerHTML = '▶';
+                btn.title = 'Espandi';
+            }
+        }
+        
+        // Auto-collassa i sidebar in base al numero di pannelli effettivamente visibili
+        window.addEventListener('DOMContentLoaded', function() {
+            const hasArrayItem = {{ 'true' if is_array_item else 'false' }};
+            const hasCurrentArray = {{ 'true' if current_array else 'false' }};
+            const hasCurrentTable = {{ 'true' if current_table else 'false' }};
+            const hasCurrentDoc = {{ 'true' if current_doc else 'false' }};
+            const nestedLevelsCount = {{ nested_levels|length }};
+            
+            // Il pannello array item viene mostrato SOLO se is_array_item E current_array esistono
+            const showArrayPanel = hasArrayItem && hasCurrentArray;
+            
+            // VERIFICA se current_doc è un elemento di array (controlla se è uguale all'ultimo nested level)
+            const lastNestedDoc = {{ 'true' if nested_levels and nested_levels[-1].type == "array_document" else 'false' }};
+            const currentDocIsArrayItem = hasCurrentDoc && lastNestedDoc;
+            
+            // Conta i pannelli effettivamente visibili:
+            // 1. sidebar principale (sempre)
+            // 2. pannello tabella (se current_table)
+            // 3. pannello array item (se showArrayPanel - mostra lista array)
+            // 4. pannello documento/current (se hasCurrentDoc E NON è un elemento array, altrimenti è già nei nested)
+            // 5. nested levels (solo l'ultimo - mostra il documento array finale)
+            let panelCount = 1; // sidebar principale
+            if (hasCurrentTable) panelCount++; // tabella
+            if (showArrayPanel) panelCount++;  // lista array
+            if (hasCurrentDoc && !currentDocIsArrayItem) panelCount++; // documento normale
+            if (nestedLevelsCount > 0) panelCount++; // documento array finale
+            
+            // DEBUG specifico
+            console.log('=== PANEL DEBUG ===');
+            console.log('URL:', window.location.pathname);
+            console.log('hasCurrentTable:', hasCurrentTable);
+            console.log('hasCurrentDoc:', hasCurrentDoc);
+            console.log('lastNestedDoc:', lastNestedDoc);
+            console.log('currentDocIsArrayItem:', currentDocIsArrayItem);
+            console.log('showArrayPanel:', showArrayPanel);
+            console.log('nestedLevelsCount:', nestedLevelsCount);
+            console.log('Calculated panelCount:', panelCount);
+            
+            // Conta pannelli visibili reali nel DOM
+            const visiblePanels = document.querySelectorAll('.panel:not([style*="display: none"])');
+            console.log('Actual visible panels in DOM:', visiblePanels.length);
+            console.log('===================');
+            
+            // Usa il conteggio reale del DOM se disponibile, altrimenti quello calcolato
+            const actualPanelCount = visiblePanels.length > 0 ? visiblePanels.length : panelCount;
+            
+            // Collassa se ci sono 4+ pannelli visibili
+            const shouldCollapseSidebar = actualPanelCount >= 4;
+            const shouldCollapseMain = actualPanelCount >= 5;
+            
+            if (shouldCollapseSidebar) {
+                // Collassa il primo pannello
+                const sidebarPanel = document.getElementById('sidebar-panel');
+                if (sidebarPanel && !sidebarPanel.classList.contains('collapsed')) {
+                    toggleSidebar();
+                }
+            }
+            
+            if (shouldCollapseMain) {
+                // Collassa anche la sidebar principale
+                const mainSidebar = document.getElementById('main-sidebar');
+                if (mainSidebar && !mainSidebar.classList.contains('collapsed')) {
+                    toggleMainSidebar();
+                }
+            }
+        });
     </script>
 {% endblock %}
