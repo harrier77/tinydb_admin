@@ -554,6 +554,37 @@
                 {% endif %}
                 {% endfor %}
             </nav>
+            
+            <!-- Split JSON Section - Posizionato in basso -->
+            <div class="split-section" style="margin-top: auto; padding: 16px 20px; border-top: 1px solid #dadce0; background-color: #f8f9fa;">
+                <div style="font-size: 11px; font-weight: 500; text-transform: uppercase; color: #5f6368; letter-spacing: 0.5px; margin-bottom: 8px;">
+                    Split JSON
+                </div>
+                <form action="/split-json" method="POST" style="display: flex; flex-direction: column; gap: 8px;">
+                    <select name="input_file" required style="padding: 8px 12px; font-size: 13px; border: 1px solid #dadce0; border-radius: 4px; background-color: #fff; color: #202124; cursor: pointer; width: 100%;">
+                        <option value="">Seleziona file JSON...</option>
+                        {% for db in databases %}
+                            {% if db.endswith('.json') %}
+                            <option value="{{ db }}">{{ db }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                    <button type="submit" style="padding: 8px 12px; font-size: 12px; background: #34a853; color: white; border: none; border-radius: 4px; cursor: pointer; transition: background 0.2s;">
+                        ⚡ Split & Minify
+                    </button>
+                </form>
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div style="margin-top: 8px;">
+                        {% for category, message in messages %}
+                            <div style="padding: 8px 12px; font-size: 12px; border-radius: 4px; {% if category == 'error' %}background: #fce8e8; color: #d93025;{% else %}background: #e6f4ea; color: #137333;{% endif %}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+            </div>
         </aside>
         
         <!-- Pannelli Contenuto -->

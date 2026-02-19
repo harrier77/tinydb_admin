@@ -1,10 +1,11 @@
-from flask import Flask, render_template, jsonify, request, session, redirect, url_for
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for, flash
 from tinydb import TinyDB, Query
 from tinydb.storages import JSONStorage
 from tinydb.table import Table
 import json
 import os
 import glob
+from json_splitter import split_json_structure
 
 class UTF8JSONStorage(JSONStorage):
     """Storage che forza l'encoding UTF-8 per supportare caratteri speciali"""
@@ -20,6 +21,93 @@ class CustomTinyDB(TinyDB):
     """TinyDB che usa sempre StringIdTable per tutte le tabelle"""
     table_class = StringIdTable
 
+class DocumentWithId(dict):
+    """Documento con attributo doc_id per compatibilità con TinyDB"""
+    def __init__(self, data, doc_id):
+        super().__init__(data)
+        self.doc_id = doc_id
+
+class SplitDirectoryTable:
+    """Tabella che contiene tutti i documenti dalla directory splittata"""
+    def __init__(self, directory_path, table_name):
+        self.directory = directory_path
+        self.table_name = table_name
+        self._documents = None
+        self._load_documents()
+    
+    def _load_documents(self):
+        """Carica tutti i documenti JSON dalla directory"""
+        self._documents = []
+        doc_id = 1
+        if os.path.exists(self.directory):
+            for f in sorted(os.listdir(self.directory)):
+                if f.endswith('.json'):
+                    file_path = os.path.join(self.directory, f)
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as file:
+                            content = file.read().strip()
+                            if content:
+                                data = json.loads(content)
+                                if isinstance(data, dict):
+                                    self._documents.append(DocumentWithId(data, doc_id))
+                                    doc_id += 1
+                                elif isinstance(data, list):
+                                    for item in data:
+                                        if isinstance(item, dict):
+                                            self._documents.append(DocumentWithId(item, doc_id))
+                                            doc_id += 1
+                    except (json.JSONDecodeError, FileNotFoundError) as e:
+                        print(f"Errore caricamento {file_path}: {e}")
+    
+    def all(self):
+        """Restituisce tutti i documenti come lista"""
+        return self._documents if self._documents is not None else []
+    
+    def get(self, doc_id=None):
+        """Restituisce un documento per ID (doc_id può essere indice o _id)"""
+        documents = self.all()
+        # Cerca per doc_id (indice numerico basato su 1)
+        if isinstance(doc_id, int):
+            for doc in documents:
+                if doc.doc_id == doc_id:
+                    return doc
+        # Cerca per campo _id
+        for doc in documents:
+            if doc.get('_id') == doc_id:
+                return doc
+        return None
+
+class SplitDirectoryDB:
+    """Database TinyDB-like per directory splittate"""
+    def __init__(self, directory_path):
+        self.directory = directory_path
+        self.root_config = self._load_root_config()
+        # Il path delle tabelle è relativo alla directory root
+        tables_subdir = self.root_config.get('path', '')
+        self.tables_path = os.path.join(directory_path, tables_subdir) if tables_subdir else directory_path
+        self._table_name = tables_subdir if tables_subdir else 'default'
+        self._table_cache = {}
+    
+    def _load_root_config(self):
+        """Carica la configurazione da root.json"""
+        root_file = os.path.join(self.directory, 'root.json')
+        try:
+            with open(root_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {'path': ''}
+    
+    def tables(self):
+        """Restituisce la lista dei nomi delle tabelle disponibili"""
+        # Restituisce il nome della tabella dalla root.json (es. 'AREE')
+        return [self._table_name]
+    
+    def table(self, name):
+        """Restituisce la tabella che contiene tutti i documenti dalla directory"""
+        if name not in self._table_cache:
+            self._table_cache[name] = SplitDirectoryTable(self.tables_path, name)
+        return self._table_cache[name]
+
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
@@ -28,18 +116,37 @@ def tojson_pretty(value):
     return json.dumps(value, indent=2, ensure_ascii=False)
 
 def get_available_databases():
-    """Ritorna la lista di tutti i file JSON nella directory corrente"""
+    """Ritorna la lista di tutti i file JSON e directory splittate nella directory corrente"""
+    databases = []
+    
+    # File JSON singoli
     json_files = glob.glob('*.json')
-    return sorted(json_files)
+    databases.extend(json_files)
+    
+    # Directory splittate (contengono root.json)
+    for item in os.listdir('.'):
+        if os.path.isdir(item):
+            root_json = os.path.join(item, 'root.json')
+            if os.path.exists(root_json):
+                databases.append(item)
+    
+    return sorted(databases)
 
 def get_db():
-    """Restituisce l'istanza del database selezionato"""
-    db_file = session.get('current_db', 'database.json')
+    """Restituisce l'istanza del database selezionato (file singolo o directory splittata)"""
+    db_path = session.get('current_db', 'database.json')
     
+    # Verifica se è una directory splittata
+    if os.path.isdir(db_path):
+        root_json = os.path.join(db_path, 'root.json')
+        if os.path.exists(root_json):
+            return SplitDirectoryDB(db_path)
+    
+    # Altrimenti è un file singolo
     # Verifica se il file esiste e se è in formato TinyDB valido
-    if os.path.exists(db_file):
+    if os.path.exists(db_path):
         try:
-            with open(db_file, 'r', encoding='utf-8') as f:
+            with open(db_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
             # Se è una lista (JSON semplice), convertilo in formato TinyDB
@@ -50,12 +157,12 @@ def get_db():
                     tinydb_data["_default"][str(i)] = doc
                 
                 # Salva nel formato TinyDB
-                with open(db_file, 'w', encoding='utf-8') as f:
+                with open(db_path, 'w', encoding='utf-8') as f:
                     json.dump(tinydb_data, f, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"Errore nella conversione del database: {e}")
     
-    return CustomTinyDB(db_file, storage=UTF8JSONStorage)
+    return CustomTinyDB(db_path, storage=UTF8JSONStorage)
 
 def get_array_fields(doc):
     """Ritorna i campi del documento che sono array di oggetti (sottocollezioni)"""
@@ -147,6 +254,53 @@ def select_db():
     db_file = request.form.get('database')
     if db_file and os.path.exists(db_file):
         session['current_db'] = db_file
+    return redirect(url_for('index'))
+
+@app.route('/split-json', methods=['POST'])
+def split_json():
+    """Processa un file JSON e crea una versione splittata minificata"""
+    input_file = request.form.get('input_file')
+    
+    if not input_file:
+        flash('Nessun file selezionato', 'error')
+        return redirect(url_for('index'))
+    
+    if not os.path.exists(input_file):
+        flash(f'File non trovato: {input_file}', 'error')
+        return redirect(url_for('index'))
+    
+    if not input_file.endswith('.json'):
+        flash('Il file deve essere un JSON', 'error')
+        return redirect(url_for('index'))
+    
+    # Crea il nome della directory di output (senza estensione)
+    output_dir = os.path.splitext(input_file)[0]
+    
+    # Se la directory esiste già, aggiungi un numero
+    counter = 1
+    original_output_dir = output_dir
+    while os.path.exists(output_dir):
+        output_dir = f"{original_output_dir}_{counter}"
+        counter += 1
+    
+    try:
+        # Esegui lo splitting con minify=True
+        result = split_json_structure(
+            input_file=input_file,
+            output_dir=output_dir,
+            max_depth=2,
+            threshold=2,
+            minify=True
+        )
+        
+        flash(f'File splittato con successo! Creati {len(result["files_created"])} file in {output_dir}', 'success')
+        
+        # Seleziona automaticamente il nuovo database splittato
+        session['current_db'] = output_dir
+        
+    except Exception as e:
+        flash(f'Errore durante lo splitting: {str(e)}', 'error')
+    
     return redirect(url_for('index'))
 
 @app.route('/browse/<path:path>')
