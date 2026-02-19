@@ -214,7 +214,7 @@
                             {% for field_name, field_value in level.document.items() %}
                             <li class="doc-item">
                                 {% set field_type = level.field_types.get(field_name, 'simple') if level.field_types else 'simple' %}
-                                {% set field_url_base = root_doc_id + '/' + level.base_path if level.base_path else root_doc_id + '/' + level.array_name + '/' + level.index|string %}
+                                {% set field_url_base = root_doc_id|string + '/' + level.base_path if level.base_path else root_doc_id|string + '/' + level.array_name + '/' + level.index|string %}
                                 {% if field_type == 'object' %}
                                     <!-- Campo è un oggetto/dizionario -->
                                     <a href="/browse/{{ current_table }}/doc/{{ field_url_base }}/{{ field_name }}" class="doc-link">
